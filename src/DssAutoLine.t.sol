@@ -71,7 +71,7 @@ contract DssAutoLineTest is DSTest {
         vat.file(ilk, "rate", 1 * RAY);
         dssAutoLine = new DssAutoLine(address(vat));
 
-        dssAutoLine.setIlk(ilk, 12600 * RAD, 2500 * RAD, 1 hours);
+        dssAutoLine.setIlk(ilk, 12600 * RAD, 2500 * RAD, 1 hours/ 15, 10 minutes/15);  // 10 blocks an hour.
 
         hevm = Hevm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
         _warp(0);
@@ -95,9 +95,8 @@ contract DssAutoLineTest is DSTest {
         (,,,line,) = vat.ilks(ilk);
         assertEq(line, 12500 * RAD);
         assertEq(vat.Line(), 12500 * RAD);
-        (,,, uint256 last, uint256 lastInc) = dssAutoLine.ilks(ilk);
+        (,,,,, uint256 last) = dssAutoLine.ilks(ilk);
         assertEq(last   , 1 hours / 15);
-        assertEq(lastInc, 1 hours);
         vat.setDebt(ilk, 10200 * RAD); // New max debt ceiling amount
 
         _warp(2 hours);
@@ -106,19 +105,18 @@ contract DssAutoLineTest is DSTest {
         (,,,line,) = vat.ilks(ilk);
         assertEq(line, 12600 * RAD); // < 12700 * RAD (due max line: 10200 + gap)
         assertEq(vat.Line(), 12600 * RAD);
-        (,,, last, lastInc) = dssAutoLine.ilks(ilk);
+        (,,,,, last) = dssAutoLine.ilks(ilk);
         assertEq(last   , 2 hours / 15);
-        assertEq(lastInc, 2 hours);
     }
 
     function test_exec_multiple_ilks() public {
         vat.file("gold",         "line", 5000 * RAD);
-        dssAutoLine.setIlk("gold", 7600 * RAD, 2500 * RAD, 1 hours);
+        dssAutoLine.setIlk("gold", 7600 * RAD, 2500 * RAD, 1 hours/15, 10 minutes/15);
 
         vat.file("silver", "line", 5000 * RAD);
         vat.file("silver", "rate", 1 * RAY);
 
-        dssAutoLine.setIlk("silver", 7600 * RAD, 1000 * RAD, 2 hours);
+        dssAutoLine.setIlk("silver", 7600 * RAD, 1000 * RAD, 2 hours/15, 10 minutes/15);
 
         vat.setDebt("gold", 5000 * RAD); // Max gold debt ceiling amount
         (uint256 goldArt,,, uint256 goldLine,) = vat.ilks("gold");
@@ -141,9 +139,8 @@ contract DssAutoLineTest is DSTest {
         (,,, goldLine,) = vat.ilks("gold");
         assertEq(goldLine, 7500 * RAD);
         assertEq(vat.Line(), 12500 * RAD);
-        (,,, uint256 goldLast, uint256 goldLastInc) = dssAutoLine.ilks("gold");
+        (,,,,, uint256 goldLast) = dssAutoLine.ilks("gold");
         assertEq(goldLast   , 1 hours / 15);
-        assertEq(goldLastInc, 1 hours);
 
         assertEq(dssAutoLine.exec("silver"), 5000 * RAD);  // Don't need to check gold since no debt increase
 
@@ -158,12 +155,10 @@ contract DssAutoLineTest is DSTest {
         assertEq(vat.Line(), 13500 * RAD);
         assertTrue(vat.Line() == goldLine + silverLine);
 
-        (,,, goldLast, goldLastInc) = dssAutoLine.ilks("gold");
+        (,,,,, goldLast) = dssAutoLine.ilks("gold");
         assertEq(goldLast   , 1 hours / 15);
-        assertEq(goldLastInc, 1 hours);
-        (,,, uint256 silverLast, uint256 silverLastInc) = dssAutoLine.ilks("silver");
+        (,,,,, uint256 silverLast) = dssAutoLine.ilks("silver");
         assertEq(silverLast   , 2 hours / 15);
-        assertEq(silverLastInc, 2 hours);
 
         vat.setDebt("gold",   7500 * RAD); // Will use max line
         vat.setDebt("silver", 6000 * RAD); // Will use `gap`
@@ -180,28 +175,18 @@ contract DssAutoLineTest is DSTest {
         assertEq(vat.Line(), 14600 * RAD);
         assertTrue(vat.Line() == goldLine + silverLine);
 
-        (,,, goldLast, goldLastInc) = dssAutoLine.ilks("gold");
+        (,,,,, goldLast) = dssAutoLine.ilks("gold");
         assertEq(goldLast   , 4 hours / 15);
-        assertEq(goldLastInc, 4 hours);
-        (,,, silverLast, silverLastInc) = dssAutoLine.ilks("silver");
+        (,,,,, silverLast) = dssAutoLine.ilks("silver");
         assertEq(silverLast   , 4 hours / 15);
-        assertEq(silverLastInc, 4 hours);
     }
 
-    function test_ilk_not_enabled() public {
+    function testFail_ilk_not_enabled() public {
         vat.setDebt(ilk, 10000 * RAD); // Max debt ceiling amount
         _warp(1 hours);
 
         dssAutoLine.remIlk(ilk);
         assertEq(dssAutoLine.exec(ilk), 10000 * RAD); // The line from the vat
-    }
-
-    function test_exec_not_enough_time_passed() public {
-        vat.setDebt(ilk, 10000 * RAD); // Max debt ceiling amount
-        _warp(3575);
-        assertEq(dssAutoLine.exec(ilk), 10000 * RAD);  // No change
-        _warp(1 hours);
-        assertEq(dssAutoLine.exec(ilk), 12500 * RAD);  // + gap
     }
 
     function test_exec_line_decrease_under_min_time() public {
@@ -210,9 +195,8 @@ contract DssAutoLineTest is DSTest {
         (,,, uint256 line,) = vat.ilks(ilk);
         assertEq(line, 10000 * RAD);
         assertEq(vat.Line(), 10000 * RAD);
-        (,,, uint256 last, uint256 lastInc) = dssAutoLine.ilks(ilk);
+        (,,,,, uint256 last) = dssAutoLine.ilks(ilk);
         assertEq(last   , 0);
-        assertEq(lastInc, 0);
 
         _warp(15); // To block number 1
 
@@ -220,9 +204,8 @@ contract DssAutoLineTest is DSTest {
         (,,, line,) = vat.ilks(ilk);
         assertEq(line, 10000 * RAD);
         assertEq(vat.Line(), 10000 * RAD);
-        (,,, last, lastInc) = dssAutoLine.ilks(ilk);
+        (,,,,, last) = dssAutoLine.ilks(ilk);
         assertEq(last   , 0); // no update
-        assertEq(lastInc, 0); // no increment
 
         vat.setDebt(ilk, 7000 * RAD); // debt + gap = 7000 + 2500 = 9500 < 10000
         (uint256 Art,,,,) = vat.ilks(ilk);
@@ -234,9 +217,8 @@ contract DssAutoLineTest is DSTest {
         (,,, line,) = vat.ilks(ilk);
         assertEq(line, 9500 * RAD);
         assertEq(vat.Line(), 9500 * RAD);
-        (,,, last, lastInc) = dssAutoLine.ilks(ilk);
+        (,,,,, last) = dssAutoLine.ilks(ilk);
         assertEq(last   , 2); // update
-        assertEq(lastInc, 0); // no increment
 
         vat.setDebt(ilk, 6000 * RAD); // debt + gap = 6000 + 2500 = 8500 < 9500
         (Art,,,,) = vat.ilks(ilk);
@@ -246,9 +228,8 @@ contract DssAutoLineTest is DSTest {
         (,,, line,) = vat.ilks(ilk);
         assertEq(line, 9500 * RAD);
         assertEq(vat.Line(), 9500 * RAD);
-        (,,, last, lastInc) = dssAutoLine.ilks(ilk);
+        (,,,,, last) = dssAutoLine.ilks(ilk);
         assertEq(last   , 2); // no update
-        assertEq(lastInc, 0); // no increment
 
         _warp(45); // To block number 3
 
@@ -256,20 +237,19 @@ contract DssAutoLineTest is DSTest {
         (,,, line,) = vat.ilks(ilk);
         assertEq(line, 8500 * RAD);
         assertEq(vat.Line(), 8500 * RAD);
-        (,,, last, lastInc) = dssAutoLine.ilks(ilk);
+        (,,,,, last) = dssAutoLine.ilks(ilk);
         assertEq(last   , 3); // update
-        assertEq(lastInc, 0); // no increment
     }
 
-    function test_invalid_exec_ilk() public {
+    function testFail_invalid_exec_ilk() public {
         _warp(1 hours);
-        assertEq(dssAutoLine.exec("FAIL-A"), 0);
+        dssAutoLine.exec("FAIL-A");
     }
 
-    function test_exec_twice_failure() public {
+    function testFail_exec_failure() public {
         vat.setDebt(ilk, 100 * RAD); // Max debt ceiling amount
-        vat.file(ilk,         "line", 100 * RAD);
-        dssAutoLine.setIlk(ilk, 20000 * RAD, 2500 * RAD, 1 hours);
+        vat.file(ilk, "line", 100 * RAD);
+        dssAutoLine.setIlk(ilk, 20000 * RAD, 2500 * RAD, 1 hours/15 , 10 minutes /15);
 
         _warp(1 hours);
 
@@ -281,6 +261,27 @@ contract DssAutoLineTest is DSTest {
         vat.setDebt(ilk, 2500 * RAD);
 
         assertEq(dssAutoLine.exec(ilk), 2600 * RAD); // This should short-circuit
+    }
+
+    function test_exec_not_enough_time_passed() public {
+        vat.setDebt(ilk, 10000 * RAD); // Max debt ceiling amount
+        _warp(1 hours);
+        assertEq(dssAutoLine.exec(ilk), 12500 * RAD);  // + gap
+    }
+
+    function test_exec_pass() public {
+        vat.setDebt(ilk, 100 * RAD); // Max debt ceiling amount
+        vat.file(ilk,         "line", 100 * RAD);
+        dssAutoLine.setIlk(ilk, 20000 * RAD, 2500 * RAD, 1 hours/15 , 10 minutes /15);
+
+        _warp(1 hours);
+
+        assertEq(dssAutoLine.exec(ilk), 2600 * RAD);
+        (,,,uint256 line,) = vat.ilks(ilk);
+        assertEq(line, 2600 * RAD);
+        assertEq(vat.Line(), 12500 * RAD);
+
+        vat.setDebt(ilk, 2500 * RAD);
 
         _warp(2 hours);
 
